@@ -1,0 +1,385 @@
+---
+title: "Preliminary analysis three test concepts"
+author: "Karlien"
+date: "12 augustus 2020"
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    
+---
+
+```{r setup, include=FALSE}
+options(encoding = "UTF-8")
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(rmarkdown)
+library(DT)
+library(plotly)
+
+model_wd <- ("C:/Users/u0076167/Box Sync/data/0000_i-measures/models/nepho/testconcepts")
+```
+
+
+```{r, echo = F}
+allconc <- read.table("C:/Users/u0076167/Box Sync/data/0000_i-measures/out/final_data_2020804.csv", fileEncoding = "utf-8", sep = ";", header = T)
+allconc$concept <- allconc$definition_Vdsyn
+allconc <- tibble(allconc)
+```
+
+# Background
+This file describes the preliminary analyses of three test-concepts in the QLVLnewscorpora: <span style="font-variant:small-caps;"> penis, inleiding & hart.</span>  The concepts were selected from the full list of concepts (N = 433) that I collected from WordNet, Van Dale and DLP2. Information about the full set of concepts is available here:
+
+```{r tab1}
+allconc %>% select(conceptID, definition_Vdsyn, nr_variants, targets_final, taxonomical_group) %>% datatable(colnames = c("conceptID", "concept_name", "nr_variants","variants", "taxonomical_group"))
+```
+
+
+# Model parameters
+At this moment, parameters selection was based on observations in Mariana's analyses of nouns & verbs, as well as comments in the [parameters google doc](https://docs.google.com/document/d/11GlVb9QxkiJPu_UijH7QhiSCtTyyijNrYLUOnLPhuXo/edit). At this moment, the following parameter settings were used to construct token models:  
+
+
+parameter name          | FOC               | SOC
+----------------------- | ----------------  | ----------------
+Definition target type  | lemma/pos         | lemma/pos
+Window size             | fixed: 10         | fixed: 4
+Boundaries              | sentence/none     | none
+cw selection: strategy  | local/global      | global
+cw selection: settings  | local:<br>* nav with freq > 200<br>* collfreq = 3<br>* ppmi > 1<br>* llr None or > 1<br> * global:<br>nav top-5000  | nav top-5000
+Weighting               | ppmi              | none
+
+Of these, I plan to vary the boundaries (default: sentence) and the context word selection settings for FOC's. Specifically, I will compare implementing an LLR-filter or not within the "local"^[Defined in the google doc as: "potentially all words within the specified window span around the target token". Note that my definition of "local" is not extreme, as I am only including nav's with a frequency of > 200. However, it is local in the sense that potentially all these words can be considered (N = 37807)] strategy, as well as a local versus a global^[Defined in the google doc as "fixeds set of context words, same for all target types". Here the 5000 most frequent nav's.] strategy. In the latter case, all top-5000 nav context words will be considered.
+
+# Concept 1: <span style="font-variant:small-caps;"> penis </span>
+This concept was selected because it's a difficult one, with many variables (N = 17, excluding constructions) and varying frequencies per variable.
+
+variant             | frequency
+------------------  | ------------------
+ding/noun	          |	80601
+fluit/noun	        |	1447
+jongeheer/noun	    |	105
+lid/noun	          |	107912
+lul/noun	          |	1155
+mannelijkheid/noun	|	459
+penis/noun	        |	1252
+piemel/noun	        |	372
+pik/noun	          |	451
+pisser/noun	        |	4
+plasser/noun	      |	18
+potlood/noun	      |	1504
+sjarel/noun	        |	6
+snikkel/noun	      |	18
+speer/noun	        |	1217
+tampeloeres/noun	  |	1
+zwengel/noun	      |	42
+
+This causes two problems for the models & analysis:  
+
+* Some variants are not frequent enough for the token models^[This may also be related to the parameter settings that are used, e.g. if no nav's of frequency > 200 occur with the target type in a particular token/observation, this type is not included in the model.]. As a result, these variants are not returned by the models. The too infrequent variants are: pisser/noun (N = 4), plasser/noun (N = 18), sjarel/noun (N = 6), snikkel/noun (N = 18) and tampeloeres/noun	(N = 1).
+* Some variants are too frequent (specifically the polysemous variants *ding* and *lid*), which causes computational issues. In addition, even if all the tokens for these variants would be modelled, further steps in the analyses (e.g. clustering)
+would be problematic too, as the results would be biased towards the highly frequent variants.
+
+A possible solution for the latter problem is to only sample the relevant tokens for the highly frequent types. This can be done in two ways:  
+
+* determining the relevant context words for all variants for the <span style="font-variant:small-caps;">penis</span>-concept
+* determining the relevant context words for the most prototypical variants for the <span style="font-variant:small-caps;">penis</span>-concept (cf. cue-validity). This would be the variant *penis*. While this strategy might be more easy to implement, as *penis* is not a highly polysemous word, it may^[Note that while it *may* be dangerous to use this strategy, it doesn't have to be. We just don't know yet.] also be dangerous because you run the risk of excluding context words that only occur in particular contextual settings (e.g. jocular language).  
+Note that it is at this point an open question to which extent this strategy will be necessary (and feasable) for all the concepts in the dataset. In addtition, using this strategy implies that disambiguation needs to be done *before* constructing the final tokenmodel for all the variants. More specifically, we first need to figure out which model and which clusterin algorithm gives the best semantic analysis of the concept if only the non-problematic variants are included. As a second step, we can then select the semantic space of the token cloud resulting from the best model to determine which FOC's can be considered as candidate FOC's for the problematic variants *ding* and *lid*.^[An alternative strategy may be to semasiologically analyze these variants. Specifically for *ding* this could be a fruitful approach, because this variant is highly polysemous and is also included as a hgh-level word in the WordNet-taxonomies. It is not known whether the <span style="font-variant:small-caps;">penis</span>-meaning of *ding* would show up in such an analysis.]
+
+## Selecting context words
+### Strategies for finding the best model
+To find a way of extracting context words for the problematic variants, we need a tokenmodel for the non-problematic ones that performs well. The best model would be a model that (1) has a good fit to the data (to avoid artifical effects, e.g. regional differences) and (2) has a (relatively) clear semantic region (or branch) where most observations for the target concept are located (precision), while out-of-concept tokens are located somewhere else (recall). As in other studies in the NephoSem-project, determining what the best model is, is not straightforward. There are a number of procedures that can be considered:  
+
+* manual disambiguation of all (or some of) the tokens (cf. Mariana's raters)
+* manual inspection of the tokenclouds (but precision vs. recall)
+* automatic disambiguation by also overlaying token vectors for an associated word^[We could select high-frequency candidates from the association data of Gert Storms for this purpose.] of out-of-concept senses of polysemous items (e.g. *papier* or *pen* for *potlood*). This may complicate the analysis as previous studies have shown that models perform better on certain tasks (e.g. synonyms or associated items) depending on the window size that is used. 
+* seperation indices
+* ...
+
+
+### Models
+```{r read_data, include = F}
+concept <- 'penis' # later other concepts
+
+# model info
+freq <- 3
+ppmi <- 1
+bound <- "sentencebound"
+
+# cluster info
+cluster <- 'tsne' # later add nmds & hierarchical clustering
+tsne_runs <- as.character(c(1000,5000))
+tsne_perp <- as.character(c(10,20,30,50))
+
+
+files <- list.files(paste0(model_wd, '/', concept), full.names = F, pattern="*.tsv")
+data <- lapply(paste0(model_wd, '/', concept, '/', files), read_tsv)
+
+
+# replace for viz
+replace_cws_ftn <- function(tbl) {
+  tbl$context <- str_trim(str_replace_all(tbl$`_ctxt.model`, "\\<small\\>.*?\\</small\\>", ""))
+  tbl$context <- str_replace(tbl$context, "\\<span class='target'\\>", "\\<b\\>")
+  tbl$context <- str_replace(tbl$context, "\\</span\\>", "\\</b\\>")
+  tbl$context <- str_replace_all(tbl$context, "\\</u\\>", "\\</i\\>")
+  tbl$context <- str_replace_all(tbl$context, "\\<u\\>", "\\<i\\>")
+  return(tbl)
+}
+
+data_fin <- lapply(data, replace_cws_ftn)
+
+
+replace_fnames_ftn <- function(fls) {
+  fls2 <- str_replace(fls, paste0(concept, "_"), "")
+  fls2 <- str_replace(fls2, '_data.tsv', "")
+
+}
+
+files_fin <-replace_fnames_ftn(files)
+
+```
+
+So far, eight solutions with tsne-clustering and two (three) models with nmds have been constructed. The models can be downloaded [here](https://drive.google.com/file/d/1s5IDm2F1FxTsf1bCiyWJy45LgFfJEZDk/view?usp=sharing).^[I'm currently working on a widget to make this more straightforward.] All the tokenmodels have the following parameters:
+
+parameter name          | FOC               | SOC
+----------------------- | ----------------  | ----------------
+Definition target type  | lemma/pos         | lemma/pos
+Window size             | fixed: 10         | fixed: 4
+Boundaries              | sentence~~/none~~ | none
+cw selection: strategy  | local~~/global~~  | global
+cw selection: settings  | local:<br>* nav with freq > 200<br>* collfreq = 3<br>* ppmi > 1<br>* llr None ~~or > 1~~<br> * ~~global~~  | nav top-5000
+Weighting               | ppmi              | none
+
+#### t-SNE-models
+The t-SNE-solutions additionally vary according to two parameters:
+
+* Number of runs used to calculate the solution: 1000 or 5000. This is particularly useful for this dataset because the variants have very unequal frequencies (and some a 9 times more frequent than others), so a stable solution may not be reached as fast.
+* perplexity: 10, 20, 30, 50.
+
+Overall, it looks like the more stable models are the ones with more runs and perplexity 30^[For both t-SNE and NMDS we should also verify that the dimensions returned are in fact semantic and not e.g. quality vs. popular newpapers or BE vs. NL. I also plan to implement this.]
+
+
+```{r, eval = F}
+##### number of runs = 1000
+perp = 10
+nruns = 1000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+
+```{r, eval = F}
+perp = 20
+nruns = 1000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+```{r, eval = F}
+perp = 30
+nruns = 1000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+```{r, eval = F}
+perp = 50
+nruns = 1000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+
+
+```{r, eval = F}
+##### number of runs = 5000
+perp = 10
+nruns = 5000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+
+```{r, eval = F}
+perp = 20
+nruns = 5000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+```{r, eval = F}
+perp = 30
+nruns = 5000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+```{r, eval = F}
+perp = 50
+nruns = 5000
+
+fname = paste0(concept, "_tsneperp", perp, "runs", nruns, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("t-SNE\nruns =", nruns,"; perplexity = ", perp))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+
+#### NMDS-models
+I have tried three NMDS-solutions so far:  
+
+1. k = 2, max number of random restarts = 20^[This determines how many times the algrotihm can try to find a stable solution. If it doesn't succeed in the specified number of random starts, there is no succesful convergence.] 
+2. increasing the number of restarts to 500
+3. increasing both k and the restarts: k = 5, max number of random restarts = 100
+
+The first nmds-solutions is really bad, with a high stress value (> 0.28) and it did not converge. The second solution has been running for over twelve hours and is only at trial 178 with stress-values comparable the first solution (so I'm going to kill the project, increasing random starts alone doesn't seem to help). The third solution is the best one so far, with a stress value of 0.1334, but still no convergence. The second dimension may be the one were after but it's not the case that all variants with the target meaning are at the bottom of the plot, not that all out-of-concept variants are at the top.  
+Especially the first two models don't make as much sense (pun intended) as the t-SNE solutions, so I am doubtful that NMDS is the best option for this concept (or at least with the parameters currently in the tokenmodel). I will try one more solution, with both large k and large number of random starts.  
+
+
+
+
+```{r, eval = F}
+k = 2
+maxtry = 20
+
+fname = paste0(concept, "_nmdsk", k, "rs", maxtry, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod <- mymodel %>% 
+        ggplot(aes(x = model.x, y = model.y, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("NMDS - k = 2; randomstarts = 20"))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod)
+
+```
+
+
+
+```{r, eval = F}
+k = 5
+maxtry = 100
+
+fname = paste0(concept, "_nmdsk", k, "rs", maxtry, "_freq3ppmi1sentencebound_data.tsv")
+print(fname)
+dataID = which(files == fname)
+mymodel = as.data.frame(data_fin[dataID])
+
+mod_dim1_dim2 <- mymodel %>% 
+        ggplot(aes(x = dim1, y = dim2, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("NMDS- k = 5; randomstarts = 100\ndim 1 & dim 2"))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod_dim1_dim2)
+
+```
+
+```{r eval = F}
+mod_dim3_dim4 <- mymodel %>% 
+        ggplot(aes(x = dim3, y = dim4, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("NMDS- k = 5; randomstarts = 100\ndim 3 & dim 4"))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod_dim3_dim4)
+
+```
+
+```{r eval = F}
+mod_dim1_dim5 <- mymodel %>% 
+        ggplot(aes(x = dim1, y = dim5, labels = context)) + 
+        geom_point(aes(color = lemma)) + scale_color_brewer(palette = "Set3") + 
+        ggtitle(paste0("NMDS- k = 5; randomstarts = 100\ndim 1 & dim 5"))+
+        theme_bw() + theme(legend.title = element_blank())
+ggplotly(mod_dim1_dim5)
+
+```
+
+
